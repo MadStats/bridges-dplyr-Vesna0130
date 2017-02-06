@@ -1,0 +1,104 @@
+---
+title: "Bridges"
+author: "Wenjin Li"
+date: "2017/2/1"
+output: pdf_document
+---
+
+First load the packages and data.
+```{r, warning=FALSE, message = FALSE,comment = FALSE}
+library(tidyverse)
+library(plyr)
+library(choroplethr)
+library(dplyr)
+library(readr)
+library(data.table)
+library(ggplot2)
+
+dest = "https://www.fhwa.dot.gov/bridge/nbi/2016/delimited/AK16.txt"
+tmp = fread(dest) 
+tmp = as.tbl(tmp)
+tmp1 = read_csv(dest)
+tmp2 = read_csv(dest, col_types = "c")  # could make them all characters...
+classes = sapply(tmp, class)
+
+states= read_csv("http://pages.stat.wisc.edu/~karlrohe/classes/data/stateAbv.txt")
+states=states[-(1:12),]
+states[51,] = c("WashDC", "DC")
+states[52,] = c("Puerto Rico", "PR")
+dat=list()
+
+dest= rep("", 52)
+for(i in 1:52) dest[i]=paste("https://www.fhwa.dot.gov/bridge/nbi/2016/delimited/", states[i,2],"16.txt", sep = "") 
+x16 = ldply(dest, fread, colClasses = classes)  
+```
+
+```{r, echo=FALSE,warning=FALSE, message = FALSE,comment = FALSE}
+M = x16
+M = M[,-14]
+fun = function(x){ return(which(x>20)) }
+(bad =  is.na(M) %>% colSums %>% fun)
+M = M[,-bad]
+
+keep = c("STATE_CODE_001", "STRUCTURE_NUMBER_008" , "COUNTY_CODE_003", "LAT_016", "LONG_017", "TOLL_020" , "ADT_029"           ,      "YEAR_ADT_030" ,
+         "YEAR_BUILT_027" , "DECK_COND_058" , "SUPERSTRUCTURE_COND_059", "SUBSTRUCTURE_COND_060"  , "CHANNEL_COND_061","CULVERT_COND_062", "DATE_OF_INSPECT_090"   ,  "FRACTURE_092A"     ,      "UNDWATER_LOOK_SEE_092B" , "SPEC_INSPECT_092C"  )
+
+M = as.tbl(M)
+x = select(M, one_of(keep)) 
+```
+
+```{r}
+wi = filter(x, STATE_CODE_001 == 55)
+wi
+
+ggplot(data = wi) +geom_point(mapping = aes(y = LAT_016, x = LONG_017, col = log(ADT_029)))
+ggplot(data = wi) +geom_point(mapping = aes(y = LAT_016, x = LONG_017, col = YEAR_BUILT_027))
+
+wi2 = filter(wi, LAT_016>0&LONG_017>0)
+ggplot(data = wi2) +geom_point(mapping = aes( y = LAT_016, x = LONG_017, col = log(ADT_029)))
+ggplot(data = wi2) +geom_point(mapping = aes(y = LAT_016, x = LONG_017, col = YEAR_BUILT_027))
+
+min2dec = function(x){
+  substr(x,3,8) %>% return
+}
+hist(wi$LAT_016 %>% min2dec %>% as.numeric)
+
+min2dec = function(x){
+  as.numeric(substr(x,1,2)) + as.numeric(substr(x,3,8))/6e+05 %>% return
+}
+wi2 = mutate(wi2,lat = min2dec(LAT_016), lon = min2dec(LONG_017))
+wi2 = filter(wi2,lon<100)
+
+wi2$DECK_COND_058[wi2$DECK_COND_058=="N"] = "Not Applicable"
+wi2$SUPERSTRUCTURE_COND_059[wi2$SUPERSTRUCTURE_COND_059=="N"] = "Not Applicable"
+wi2$SUBSTRUCTURE_COND_060[wi2$SUBSTRUCTURE_COND_060=="N"] = "Not Applicable"
+wi2$CHANNEL_COND_061[wi2$CHANNEL_COND_061=="N"] = "Not Applicable"
+wi2$CULVERT_COND_062[wi2$CULVERT_COND_062=="N"] = "Not Applicable"
+
+ggplot(data = wi2) +geom_point(mapping = aes(y = lat, x = lon,col = DECK_COND_058),size = 0.3)
+
+ggplot(data = wi2) +geom_point(mapping = aes(y = lat, x = lon,col = SUPERSTRUCTURE_COND_059),size = 0.3)
+
+wi3 = mutate(wi2, cond=pmin(DECK_COND_058,SUPERSTRUCTURE_COND_059,SUBSTRUCTURE_COND_060,CHANNEL_COND_061,CULVERT_COND_062), RATE = rep(0, time=length(wi2$lat)))
+
+rateIt = function(cond){
+  # gives a good to fail rating for cond.
+  rate = rep("good", length(cond))
+  rate[cond<7] = "bad"
+  rate[cond<5]= "fail"
+  return(rate)
+}
+
+wi3$rate = rateIt(wi3$cond)
+table(wi3$cond)
+table(wi3$rate)
+ggplot(data = wi3, mapping = aes(y = log(ADT_029), x =YEAR_BUILT_027, col = rate)) +geom_point() + geom_smooth()
+map = ggplot(data = wi3, mapping = aes(y = lat, x = lon))
+map + geom_point(aes(col=rate))+ scale_colour_brewer(palette = "Spectral")
+
+ggplot(data = wi3) + 
+  stat_count(mapping = aes(x = rate, fill = rate))
+
+ggplot(data = wi3) + 
+  geom_bar(mapping = aes(x = YEAR_BUILT_027, fill = rate))
+```
