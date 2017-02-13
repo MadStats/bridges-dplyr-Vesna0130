@@ -64,18 +64,19 @@ x %>% group_by(STRUCTURE_KIND_043A) %>% summarise(ADT=mean(ADT_029)) %>%
 a <- c(1:50)
 x %>% filter(YEAR_BUILT_027<=1950) %>% group_by(fips) %>%
   summarise(StrcKind=sum(STRUCTURE_KIND_043A==7)/length(STRUCTURE_KIND_043A)) %>%
-  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[a])) + ggtitle("#Bridges Built Before 1950")
+  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[a])) + ggtitle("Rates of Wooden Bridges Before 1950")
 
 x %>% filter(YEAR_BUILT_027>1950) %>% group_by(fips) %>%
   summarise(StrcKind=sum(STRUCTURE_KIND_043A==7)/length(STRUCTURE_KIND_043A)) %>%
-  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[a])) + ggtitle("#Bridges Built After 1950")
+  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[a])) + ggtitle("Rates of Wooden Bridge After 1950")
 
 x %>% filter(YEAR_BUILT_027<=1950) %>% group_by(fips) %>%
   summarise(StrcKind=sum(STRUCTURE_KIND_043A==1|STRUCTURE_KIND_043A==3)/length(STRUCTURE_KIND_043A)) %>%
-  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[a])) + ggtitle("#Bridges Built Before 1950")
+  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[a])) + ggtitle("Rates of Concrete/Steel Bridge Before 1950")
 
 x %>% filter(YEAR_BUILT_027>1950) %>% group_by(fips) %>%
   summarise(StrcKind=sum(STRUCTURE_KIND_043A==1|STRUCTURE_KIND_043A==3)/length(STRUCTURE_KIND_043A)) %>%
-  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[a])) + ggtitle("#Bridges Built After 1950")
+  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[a])) + ggtitle("Rates of Concrete/Steel Bridge After 1950")
 
 dev.off()
+
