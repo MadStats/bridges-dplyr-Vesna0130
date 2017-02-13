@@ -2,24 +2,31 @@
 title: "Bridges"
 author: "Wenjin Li"
 date: "2017/2/1"
-output: pdf_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
-First load the packages and data.
+1. First download the packages.
 ```{r, warning=FALSE, message = FALSE,comment = FALSE}
 library(tidyverse)
-library(plyr)
 library(choroplethr)
-library(dplyr)
 library(readr)
 library(data.table)
 library(ggplot2)
+library(hexbin)
+library(choroplethrMaps)
+library(modeest)
+detach("package:dplyr", unload=TRUE)
+library(dplyr)
+```
 
+2. Download the bridges data of year 2016 and choose variables which we are intrested in.
+
+```{r,warning=FALSE, message = FALSE,comment = FALSE}
 dest = "https://www.fhwa.dot.gov/bridge/nbi/2016/delimited/AK16.txt"
 tmp = fread(dest) 
 tmp = as.tbl(tmp)
-tmp1 = read_csv(dest)
-tmp2 = read_csv(dest, col_types = "c")  # could make them all characters...
 classes = sapply(tmp, class)
 
 states= read_csv("http://pages.stat.wisc.edu/~karlrohe/classes/data/stateAbv.txt")
@@ -31,74 +38,73 @@ dat=list()
 dest= rep("", 52)
 for(i in 1:52) dest[i]=paste("https://www.fhwa.dot.gov/bridge/nbi/2016/delimited/", states[i,2],"16.txt", sep = "") 
 x16 = ldply(dest, fread, colClasses = classes)  
-```
 
-```{r, echo=FALSE,warning=FALSE, message = FALSE,comment = FALSE}
 M = x16
 M = M[,-14]
 fun = function(x){ return(which(x>20)) }
 (bad =  is.na(M) %>% colSums %>% fun)
 M = M[,-bad]
 
-keep = c("STATE_CODE_001", "STRUCTURE_NUMBER_008" , "COUNTY_CODE_003", "LAT_016", "LONG_017", "TOLL_020" , "ADT_029"           ,      "YEAR_ADT_030" ,
-         "YEAR_BUILT_027" , "DECK_COND_058" , "SUPERSTRUCTURE_COND_059", "SUBSTRUCTURE_COND_060"  , "CHANNEL_COND_061","CULVERT_COND_062", "DATE_OF_INSPECT_090"   ,  "FRACTURE_092A"     ,      "UNDWATER_LOOK_SEE_092B" , "SPEC_INSPECT_092C"  )
+keep = c("STATE_CODE_001", "STRUCTURE_NUMBER_008" , "COUNTY_CODE_003", "LAT_016", "LONG_017", "ADT_029" , "YEAR_ADT_030" , "YEAR_BUILT_027" , "HISTORY_037" ,"STRUCTURE_KIND_043A","STRUCTURE_TYPE_043B" )
 
 M = as.tbl(M)
 x = select(M, one_of(keep)) 
+
+x = mutate(x, fips = STATE_CODE_001*1000+COUNTY_CODE_003)
+min2dec = function(x){
+  n = nchar(x)
+  as.numeric(substr(x,1,n-6)) + as.numeric(substr(x,n-5,n))/6e+05 %>% return
+}
+x = mutate(x,lat = min2dec(LAT_016), lon = -min2dec(LONG_017))
 ```
 
+3. Try to plot all bridges and discard the extreme values of latitude and longitude.
+
 ```{r}
-wi = filter(x, STATE_CODE_001 == 55)
-wi
+ggplot(data = x) + geom_hex(mapping = aes(y = lat, x = lon))
+x = x %>% filter(lat > 24 , lon > -130)
+ggplot(data = x) + geom_hex(mapping = aes(y = lat, x = lon))
+```
 
-ggplot(data = wi) +geom_point(mapping = aes(y = LAT_016, x = LONG_017, col = log(ADT_029)))
-ggplot(data = wi) +geom_point(mapping = aes(y = LAT_016, x = LONG_017, col = YEAR_BUILT_027))
+4. The variables "STRUCTURE_KIND_043A" and "STRUCTURE_TYPE_043B" record the description on the inspection form and indicate the type of structure for the main span. Now we only analysis the first digit, which indicates the kind of material and design. Suppose the material used on bridges is correlated with the year bridges built. A plot is shown below. We can directly see that the rate of material 5 (prestressed concrete) is much more greater after 1950 than before. 
 
-wi2 = filter(wi, LAT_016>0&LONG_017>0)
-ggplot(data = wi2) +geom_point(mapping = aes( y = LAT_016, x = LONG_017, col = log(ADT_029)))
-ggplot(data = wi2) +geom_point(mapping = aes(y = LAT_016, x = LONG_017, col = YEAR_BUILT_027))
+```{r}
+ggplot(data = x) + 
+  geom_bar(mapping = aes(x = YEAR_BUILT_027, fill = as.factor(STRUCTURE_KIND_043A)))
 
-min2dec = function(x){
-  substr(x,3,8) %>% return
-}
-hist(wi$LAT_016 %>% min2dec %>% as.numeric)
+ggplot(data = x) +
+  geom_point(mapping = aes(x = lon, y = lat, color = STRUCTURE_KIND_043A))
+```
 
-min2dec = function(x){
-  as.numeric(substr(x,1,2)) + as.numeric(substr(x,3,8))/6e+05 %>% return
-}
-wi2 = mutate(wi2,lat = min2dec(LAT_016), lon = min2dec(LONG_017))
-wi2 = filter(wi2,lon<100)
+The following plot shows that there may exist some correlation between structure type and average daily traffic.
 
-wi2$DECK_COND_058[wi2$DECK_COND_058=="N"] = "Not Applicable"
-wi2$SUPERSTRUCTURE_COND_059[wi2$SUPERSTRUCTURE_COND_059=="N"] = "Not Applicable"
-wi2$SUBSTRUCTURE_COND_060[wi2$SUBSTRUCTURE_COND_060=="N"] = "Not Applicable"
-wi2$CHANNEL_COND_061[wi2$CHANNEL_COND_061=="N"] = "Not Applicable"
-wi2$CULVERT_COND_062[wi2$CULVERT_COND_062=="N"] = "Not Applicable"
+```{r}
+x %>% group_by(STRUCTURE_KIND_043A) %>% summarise(ADT=mean(ADT_029)) %>%
+  ggplot(mapping = aes(x=STRUCTURE_KIND_043A,y=ADT)) +
+  geom_point() +
+  geom_line() +
+  ggtitle("Average Daily Traffic")
+```
 
-ggplot(data = wi2) +geom_point(mapping = aes(y = lat, x = lon,col = DECK_COND_058),size = 0.3)
+5. According to the history, in the middle of the 18th century to the middle of the 19th century, the United States built many wooden bridges. However, after the late 19th century the wooden bridges are gradually replaced by the steel bridges. From the plots we can also see that the northwest areas have more wooden bridges than the southeast.
 
-ggplot(data = wi2) +geom_point(mapping = aes(y = lat, x = lon,col = SUPERSTRUCTURE_COND_059),size = 0.3)
+```{r}
+n <- c(1:50)
+x %>% filter(YEAR_BUILT_027<=1950) %>% group_by(fips) %>%
+  summarise(StrcKind=sum(STRUCTURE_KIND_043A==7)/length(STRUCTURE_KIND_043A)) %>%
+  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[n])) + ggtitle("Rate of Wooden Bridges Before 1950")
 
-wi3 = mutate(wi2, cond=pmin(DECK_COND_058,SUPERSTRUCTURE_COND_059,SUBSTRUCTURE_COND_060,CHANNEL_COND_061,CULVERT_COND_062), RATE = rep(0, time=length(wi2$lat)))
+x %>% filter(YEAR_BUILT_027>1950) %>% group_by(fips) %>%
+  summarise(StrcKind=sum(STRUCTURE_KIND_043A==7)/length(STRUCTURE_KIND_043A)) %>%
+  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[n])) + ggtitle("Rate of Wooden Bridges After 1950")
 
-rateIt = function(cond){
-  # gives a good to fail rating for cond.
-  rate = rep("good", length(cond))
-  rate[cond<7] = "bad"
-  rate[cond<5]= "fail"
-  return(rate)
-}
+x %>% filter(YEAR_BUILT_027<=1950) %>% group_by(fips) %>%
+  summarise(StrcKind=sum(STRUCTURE_KIND_043A==1|STRUCTURE_KIND_043A==3)/length(STRUCTURE_KIND_043A)) %>%
+  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[n])) + ggtitle("Rate of Concrete/Steel Bridges Before 1950")
 
-wi3$rate = rateIt(wi3$cond)
-table(wi3$cond)
-table(wi3$rate)
-ggplot(data = wi3, mapping = aes(y = log(ADT_029), x =YEAR_BUILT_027, col = rate)) +geom_point() + geom_smooth()
-map = ggplot(data = wi3, mapping = aes(y = lat, x = lon))
-map + geom_point(aes(col=rate))+ scale_colour_brewer(palette = "Spectral")
+x %>% filter(YEAR_BUILT_027>1950) %>% group_by(fips) %>%
+  summarise(StrcKind=sum(STRUCTURE_KIND_043A==1|STRUCTURE_KIND_043A==3)/length(STRUCTURE_KIND_043A)) %>%
+  transmute(region = fips, value = StrcKind) %>% county_choropleth(state_zoom = tolower(states$Alberta[n])) + ggtitle("Rate of Concrete/Steel Bridges After 1950")
 
-ggplot(data = wi3) + 
-  stat_count(mapping = aes(x = rate, fill = rate))
 
-ggplot(data = wi3) + 
-  geom_bar(mapping = aes(x = YEAR_BUILT_027, fill = rate))
 ```
